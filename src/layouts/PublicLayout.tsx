@@ -1,12 +1,13 @@
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import AuthHandler from "@/handlers/AuthHandler";
 import { Outlet } from "react-router-dom";
 
 const PublicLayout = () => {
   return (
     <div>
       <div className="w-full">
-        {/* {handler to store the user data} */}
+        <AuthHandler />
         <Navbar />
         <Outlet />
         <Footer />

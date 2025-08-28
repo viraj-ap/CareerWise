@@ -7,8 +7,11 @@ import AuthLayout from "@/layouts/AuthLayout";
 import SignInPage from "@/pages/SignIn";
 import SignUpPage from "@/pages/SignUp";
 
-import ProtectedRoutes from "./layouts/ProtectedRoutes";
+import ProtectedRoutes from "@/layouts/ProtectedRoutes";
 import MainLayout from "@/layouts/MainLayout";
+import Generate from "@/components/Generate";
+import Dashboard from "@/pages/Dashboard";
+import CreateEditPage from "@/pages/CreateEditPage";
 
 const App = () => {
   return (
@@ -33,7 +36,10 @@ const App = () => {
             </ProtectedRoutes>
           }
         >
-          
+          <Route element={<Generate />} path="/generate">
+            <Route index element={<Dashboard />} />
+            <Route path=":interviewId" element={<CreateEditPage />} />
+          </Route>
         </Route>
       </Routes>
     </Router>
