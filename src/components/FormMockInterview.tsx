@@ -3,12 +3,10 @@ import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { Interview } from "@/types";
-import { CustomBreadCrumb } from "./CustomBreakCrumb";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { toast } from "sonner";
-import { Headings } from "./Headings";
 import { Loader, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
@@ -21,6 +19,19 @@ import {
 } from "./ui/form";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  doc,
+  deleteDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+
+import { sendMessage } from "@/scripts";
+import { db } from "@/config/firebase";
+import { CustomBreadCrumb } from "./CustomBreakCrumb";
+import { Headings } from "./Headings";
 
 interface Props {
   initialData: Interview | null;
@@ -40,18 +51,62 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+const cleanAiResponse = (responseText: string) => {
+  let cleanText = responseText.trim();
+  cleanText = cleanText.replace(/(json|```|`)/g, "");
+  const jsonArrayMatch = cleanText.match(/\[.*\]/s);
+
+  if (jsonArrayMatch) {
+    cleanText = jsonArrayMatch[0];
+  } else {
+    throw new Error("No JSON array found in response");
+  }
+
+  try {
+    return JSON.parse(cleanText);
+  } catch (error) {
+    throw new Error("Invalid JSON format: " + (error as Error)?.message);
+  }
+};
+
+const generateAiResponse = async (data: FormData) => {
+  const prompt = `
+    As an experienced prompt engineer, generate a JSON array containing 5 technical interview questions 
+    along with detailed answers based on the following job information. 
+    Each object in the array should have the fields "question" and "answer".
+
+    Job Information:
+    - Job Position: ${data.position}
+    - Job Description: ${data.description}
+    - Years of Experience Required: ${data.experience}
+    - Tech Stacks: ${data.techStack}
+
+    The questions should assess skills in ${data.techStack}, problem-solving, 
+    and handling complex requirements. 
+    Return only the JSON array, no extra text or code blocks.
+  `;
+
+  const aiRaw = await sendMessage(prompt);
+  return cleanAiResponse(aiRaw);
+};
+
 const FormMockInterview = ({ initialData }: Props) => {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: initialData || {},
+    defaultValues: initialData || {
+      position: "",
+      description: "",
+      experience: 0,
+      techStack: "",
+    },
   });
 
   const { isValid, isSubmitting } = form.formState;
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
-
-  const userId = useAuth();
+  const { isSignedIn } = useAuth();
+  const { user } = useUser();
 
   const title = initialData?.position
     ? initialData?.position
@@ -73,10 +128,69 @@ const FormMockInterview = ({ initialData }: Props) => {
       };
 
   const onSubmit = async (data: FormData) => {
+    if (!isSignedIn || !user) {
+      toast.error("You must be signed in to create an interview");
+      return;
+    }
+
     try {
       setLoading(true);
+
+      const aiQuestions = await generateAiResponse(data);
+
+      if (initialData) {
+        const interviewRef = doc(db, "interviews", initialData.id);
+        await updateDoc(interviewRef, {
+          ...data,
+          questions: aiQuestions,
+          updatedAt: serverTimestamp(),
+        });
+
+        toast.success(toastMessage.title, {
+          description: toastMessage.description,
+        });
+
+        navigate("/generate", { replace: true });
+      } else {
+        const interviewData = {
+          ...data,
+          userId: user.id,
+          questions: aiQuestions,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        await addDoc(collection(db, "interviews"), interviewData);
+
+        toast.success(toastMessage.title, {
+          description: toastMessage.description,
+        });
+
+        navigate("/generate", { replace: true });
+      }
     } catch (error) {
+      console.error("Error saving interview:", error);
       toast.error("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!initialData) return;
+
+    try {
+      setLoading(true);
+      await deleteDoc(doc(db, "interviews", initialData.id));
+
+      toast.success("Interview deleted", {
+        description: "The interview has been deleted successfully.",
+      });
+
+      navigate("/generate", { replace: true });
+    } catch (error) {
+      console.error("Error deleting interview:", error);
+      toast.error("Failed to delete interview. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -103,7 +217,12 @@ const FormMockInterview = ({ initialData }: Props) => {
         <Headings title={title} isSubHeading />
 
         {initialData && (
-          <Button size={"icon"} variant={"ghost"}>
+          <Button
+            size={"icon"}
+            variant={"ghost"}
+            onClick={onDelete}
+            disabled={loading}
+          >
             <Trash2 className="min-w-4 min-h-4 text-red-500" />
           </Button>
         )}
@@ -111,14 +230,12 @@ const FormMockInterview = ({ initialData }: Props) => {
 
       <Separator className="my-4" />
 
-      <div className="my-6"></div>
-
       <FormProvider {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
           className="w-full p-8 rounded-lg flex-col flex items-start justify-start gap-6 shadow-md "
         >
-          {/* role */}
+          {/* position */}
           <FormField
             control={form.control}
             name="position"
@@ -155,7 +272,7 @@ const FormMockInterview = ({ initialData }: Props) => {
                   <Textarea
                     className="h-12"
                     disabled={loading}
-                    placeholder="eg:- describle your job role"
+                    placeholder="eg:- describe your job role"
                     {...field}
                     value={field.value || ""}
                   />

@@ -5,7 +5,7 @@ const ToastProvider = () => {
     <div>
       <Toaster
         richColors
-        position="top-right"
+        position="bottom-left"
         theme={
           typeof window !== "undefined"
             ? window.document.documentElement.classList.contains("dark")
