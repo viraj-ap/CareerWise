@@ -19,7 +19,7 @@ import {
   Loader,
   Save,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { TooltipButton } from "./TooltipButton";
@@ -50,12 +50,13 @@ export const RecordAnswer = ({
     results,
     startSpeechToText,
     stopSpeechToText,
+    error,
   } = useSpeechToText({
     continuous: true,
     useLegacyResults: false,
   });
 
-  const [userAnswer, setUserAnswer] = useState("");
+  const [finalTranscript, setFinalTranscript] = useState("");
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [aiResult, setAiResult] = useState<AIResponse | null>(null);
   const [open, setOpen] = useState(false);
@@ -63,6 +64,21 @@ export const RecordAnswer = ({
 
   const { userId } = useAuth();
   const { interviewId } = useParams();
+
+  // Update final transcript whenever results change
+  useEffect(() => {
+    if (results.length > 0) {
+      const combined = results
+        .map((res) => (typeof res === "string" ? res : res.transcript))
+        .join(" ");
+      setFinalTranscript(combined);
+    }
+  }, [results]);
+
+  // Derived user answer = final transcript + live interim result
+  const userAnswer = useMemo(() => {
+    return finalTranscript + (interimResult ? " " + interimResult : "");
+  }, [finalTranscript, interimResult]);
 
   const recordUserAnswer = async () => {
     if (isRecording) {
@@ -75,13 +91,11 @@ export const RecordAnswer = ({
         return;
       }
 
-      //   ai result
       const aiResult = await generateResult(
         question.question,
         question.answer,
         userAnswer
       );
-
       setAiResult(aiResult);
     } else {
       startSpeechToText();
@@ -91,12 +105,7 @@ export const RecordAnswer = ({
   const cleanJsonResponse = (responseText: string) => {
     let cleanText = responseText.trim();
     cleanText = cleanText.replace(/(json|```|`)/gi, "");
-
-    try {
-      return JSON.parse(cleanText);
-    } catch (error) {
-      throw new Error("Invalid JSON format: " + (error as Error)?.message);
-    }
+    return JSON.parse(cleanText);
   };
 
   const generateResult = async (
@@ -114,7 +123,7 @@ export const RecordAnswer = ({
     `;
 
     try {
-      const aiResponse = await sendMessage(prompt); // ✅ string
+      const aiResponse = await sendMessage(prompt);
       const parsedResult: AIResponse = cleanJsonResponse(aiResponse);
       return parsedResult;
     } catch (error) {
@@ -129,7 +138,7 @@ export const RecordAnswer = ({
   };
 
   const recordNewAnswer = () => {
-    setUserAnswer("");
+    setFinalTranscript("");
     stopSpeechToText();
     startSpeechToText();
   };
@@ -137,9 +146,7 @@ export const RecordAnswer = ({
   const saveUserAnswer = async () => {
     setLoading(true);
 
-    if (!aiResult) {
-      return;
-    }
+    if (!aiResult) return;
 
     const currentQuestion = question.question;
     try {
@@ -152,7 +159,6 @@ export const RecordAnswer = ({
       const querySnap = await getDocs(userAnswerQuery);
 
       if (!querySnap.empty) {
-        console.log("Query Snap Size", querySnap.size);
         toast.info("Already Answered", {
           description: "You have already answered this question",
         });
@@ -172,7 +178,7 @@ export const RecordAnswer = ({
         toast.success("Saved", { description: "Your answer has been saved." });
       }
 
-      setUserAnswer("");
+      setFinalTranscript("");
       stopSpeechToText();
     } catch (error) {
       toast.error("Error", {
@@ -184,15 +190,6 @@ export const RecordAnswer = ({
       setOpen(false);
     }
   };
-
-  useEffect(() => {
-    const combineTranscripts = results
-      .filter((result: any): result is ResultType => typeof result !== "string")
-      .map((result: any) => result.transcript)
-      .join(" ");
-
-    setUserAnswer(combineTranscripts);
-  }, [results]);
 
   return (
     <div className="w-full flex flex-col items-center gap-8 mt-4">
@@ -219,43 +216,25 @@ export const RecordAnswer = ({
       <div className="flex items-center justify-center gap-3">
         <TooltipButton
           content={isWebCam ? "Turn Off" : "Turn On"}
-          icon={
-            isWebCam ? (
-              <VideoOff className="min-w-5 min-h-5" />
-            ) : (
-              <Video className="min-w-5 min-h-5" />
-            )
-          }
+          icon={isWebCam ? <VideoOff /> : <Video />}
           onClick={() => setIsWebCam(!isWebCam)}
         />
 
         <TooltipButton
           content={isRecording ? "Stop Recording" : "Start Recording"}
-          icon={
-            isRecording ? (
-              <CircleStop className="min-w-5 min-h-5" />
-            ) : (
-              <Mic className="min-w-5 min-h-5" />
-            )
-          }
+          icon={isRecording ? <CircleStop /> : <Mic />}
           onClick={recordUserAnswer}
         />
 
         <TooltipButton
           content="Record Again"
-          icon={<RefreshCw className="min-w-5 min-h-5" />}
+          icon={<RefreshCw />}
           onClick={recordNewAnswer}
         />
 
         <TooltipButton
           content="Save Result"
-          icon={
-            isAiGenerating ? (
-              <Loader className="min-w-5 min-h-5 animate-spin" />
-            ) : (
-              <Save className="min-w-5 min-h-5" />
-            )
-          }
+          icon={isAiGenerating ? <Loader className="animate-spin" /> : <Save />}
           onClick={() => setOpen(true)}
           disabled={!aiResult}
         />
@@ -267,9 +246,9 @@ export const RecordAnswer = ({
           {userAnswer || "Start recording to see your answer here"}
         </p>
 
-        {interimResult && (
-          <p className="text-sm text-gray-500 mt-2">
-            <strong>Current Speech:</strong> {interimResult}
+        {error && (
+          <p className="text-sm text-red-500 mt-2">
+            <strong>Speech Error:</strong> {error}
           </p>
         )}
       </div>
