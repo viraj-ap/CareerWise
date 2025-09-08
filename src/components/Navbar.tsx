@@ -17,8 +17,12 @@ const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
+  const handleHomeClick = () => {
+    navigate("/");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const handleSignIn = () => {
-    navigate("/dashboard");
+    navigate("/");
   };
 
   useEffect(() => {
@@ -53,22 +57,30 @@ const Navbar: React.FC = () => {
             src="/logo.png"
             alt="Logo"
             className="object-contain cursor-pointer dark:invert h-8 md:h-12"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={handleHomeClick}
           />
         </div>
 
         {/* Center: Nav Items (Desktop only) */}
         <div className="hidden md:flex px-6">
           <ul className="flex gap-6 lg:gap-10 font-semibold text-sm my-6 text-gray-900 dark:text-white">
-            {navItems.map((item) => (
-              <li
-                key={item}
-                onClick={() => handleScrollTo(item.replace(/\s+/g, ""))}
-                className="cursor-pointer hover:underline hover:-translate-y-1 transition-all duration-300"
-              >
-                {item.toUpperCase()}
-              </li>
-            ))}
+            <li className="cursor-pointer hover:underline hover:-translate-y-1 transition-all duration-300">
+              Contact Us
+            </li>
+            <li className="cursor-pointer hover:underline hover:-translate-y-1 transition-all duration-300">
+              About Us
+            </li>
+            <li className="cursor-pointer hover:underline hover:-translate-y-1 transition-all duration-300">
+              Services
+            </li>
+            <li
+              onClick={() => {
+                navigate("/generate");
+              }}
+              className="cursor-pointer hover:underline hover:-translate-y-1 transition-all duration-300"
+            >
+              Take an Interview
+            </li>
           </ul>
         </div>
 
